@@ -7,7 +7,7 @@
       "logDriver": "awslogs",
       "options": {
         "awslogs-region": "${region}",
-        "awslogs-stream-prefix": "dummyapi-staging-service",
+        "awslogs-stream-prefix": "${prefix}-service",
         "awslogs-group": "${prefix}-log-group"
       }
     },
