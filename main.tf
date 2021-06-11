@@ -9,6 +9,11 @@ variable "prefix" {
     default = "aws-terraform-test"
 }
 
+variable "port" {
+    description = "port the container exposes, that the load balancer should forward port 80 to"
+    default = "4000"
+}
+
 variable "region" {
     description = "selects the aws region to apply these services to"
     default = "us-east-1"
@@ -24,6 +29,14 @@ variable "tag" {
   default     = "latest"
 }
 
+
+variable "envvars" {
+  type=map(string)
+  description = "variables to set in the environment of the container"
+  default = {
+  }
+}
+
 resource "aws_ecs_cluster" "staging" {
   name = "${var.prefix}-cluster"
 }
@@ -35,6 +48,12 @@ data "aws_vpc" "default" {
 
 data "aws_subnet_ids" "default" {
   vpc_id = "${data.aws_vpc.default.id}"
+}
+
+data "aws_caller_identity" "current" {}
+
+output "account_id" {
+  value = data.aws_caller_identity.current.account_id
 }
 
 resource "aws_security_group" "lb" {
@@ -62,8 +81,8 @@ resource "aws_security_group" "ecs_tasks" {
 
   ingress {
     protocol        = "tcp"
-    from_port       = 4000
-    to_port         = 4000
+    from_port       = var.port
+    to_port         = var.port
     cidr_blocks     = ["0.0.0.0/0"]
     security_groups = [aws_security_group.lb.id]
   }
@@ -182,16 +201,6 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role" {
 }
 
 
-data "template_file" "sproutlyapp" {
-  template = file("./app.json.tpl")
-  vars = {
-    aws_ecr_repository = aws_ecr_repository.repo.repository_url
-    tag                = "latest"
-    app_port           = 80
-    region             = "${var.region}"
-    prefix             = "${var.prefix}"
-  }
-}
 
 resource "aws_ecs_task_definition" "service" {
   family                   = "${var.prefix}-task-family"
@@ -200,7 +209,15 @@ resource "aws_ecs_task_definition" "service" {
   cpu                      = 256
   memory                   = 2048
   requires_compatibilities = ["FARGATE"]
-  container_definitions    = data.template_file.sproutlyapp.rendered
+  container_definitions    = templatefile("./app.json.tpl", {
+            aws_ecr_repository = aws_ecr_repository.repo.repository_url
+            tag                = "latest"
+            app_port           = 80
+            region             = "${var.region}"
+            prefix             = "${var.prefix}"
+            envvars            = var.envvars
+            port               = var.port
+        })
   tags = {
     Environment = "staging"
     Application = "${var.prefix}-app"
@@ -223,7 +240,7 @@ resource "aws_ecs_service" "staging" {
   load_balancer {
     target_group_arn = aws_lb_target_group.staging.arn
     container_name   = "${var.prefix}-app"
-    container_port   = 4000
+    container_port   = var.port
   }
 
   depends_on = [aws_lb_listener.https_forward, aws_iam_role_policy_attachment.ecs_task_execution_role]
@@ -247,8 +264,9 @@ resource "aws_cloudwatch_log_group" "dummyapi" {
 
 resource "null_resource" "push" {
   provisioner "local-exec" {
-     command     = "${coalesce("push.sh", "${path.module}/push.sh")} ${var.source_path} ${aws_ecr_repository.repo.repository_url} ${var.tag}"
+     command     = "${coalesce("push.sh", "${path.module}/push.sh")} ${var.source_path} ${aws_ecr_repository.repo.repository_url} ${var.tag} ${data.aws_caller_identity.current.account_id}"
      interpreter = ["bash", "-c"]
   }
 }
+
 

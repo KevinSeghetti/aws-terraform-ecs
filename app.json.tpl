@@ -13,20 +13,26 @@
     },
     "portMappings": [
       {
-        "containerPort": 4000,
-        "hostPort": 4000,
+        "containerPort": ${port},
+        "hostPort": ${port},
         "protocol": "tcp"
       }
     ],
     "cpu": 1,
     "environment": [
+      %{ for env_key, env_value in envvars }
+      {
+        "name": "${env_key}",
+        "value": "${env_value}"
+      },
+      %{ endfor ~}
       {
         "name": "NODE_ENV",
         "value": "staging"
       },
       {
         "name": "PORT",
-        "value": "4000"
+        "value": "${port}"
       }
     ],
     "ulimits": [
