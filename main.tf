@@ -56,6 +56,10 @@ output "account_id" {
   value = data.aws_caller_identity.current.account_id
 }
 
+output "instance_dns_name" {
+  value = aws_lb.staging.dns_name
+}
+
 resource "aws_security_group" "lb" {
   name        = "${var.prefix}-lb-sg"
   description = "controls access to the Application Load Balancer (ALB)"
